@@ -38,25 +38,26 @@ namespace rhbackshiftdict
 
         private Entry[] buckets;
         private uint count;
+        private uint countMod;
         private uint countUsed;
-
         private uint growAt;
         private uint shrinkAt;
 
-        private readonly IEqualityComparer<TKey> KeyComparer;
+        private readonly IEqualityComparer<TKey> keyComparer;
 
-        public RobinHoodDictionary()
-        {
-            Clear();
-        }
         public RobinHoodDictionary(int size, IEqualityComparer<TKey> comparer = null) : this((uint)size, comparer) { }
         public RobinHoodDictionary(uint size, IEqualityComparer<TKey> comparer = null)
+            : this(comparer)
         {
-            KeyComparer = comparer ?? EqualityComparer<TKey>.Default;
-            Resize(NextPow2(size));
+            Resize(NextPow2(size), false);
+        }
+        public RobinHoodDictionary(IEqualityComparer<TKey> comparer = null)
+        {
+            keyComparer = comparer ?? EqualityComparer<TKey>.Default;
+            Clear();
         }
 
-        private void Resize(uint newSize)
+        private void Resize(uint newSize, bool auto = true)
         {
 #if DEBUG
             if (newSize != 0)
@@ -69,10 +70,11 @@ namespace rhbackshiftdict
             var oldBuckets = buckets;
 
             count = newSize;
+            countMod = newSize - 1;
             buckets = new Entry[newSize];
 
-            growAt = Convert.ToUInt32(newSize * LOAD_FACTOR);
-            shrinkAt = newSize >> 2;
+            growAt = auto ? Convert.ToUInt32(newSize * LOAD_FACTOR) : newSize;
+            shrinkAt = auto ? newSize >> 2 : 0;
 
             if (countUsed > 0 && newSize != 0)
             {
@@ -89,35 +91,11 @@ namespace rhbackshiftdict
 
         bool Get(TKey key, out TValue value)
         {
-            if (key == null)
-                throw new ArgumentNullException("key");
-
-            if (countUsed > 0)
+            uint index;
+            if (Find(key, out index))
             {
-                uint
-                    hash = GetHash(key),
-
-                    indexInit = hash & (count - 1),
-                    indexCurrent,
-
-                    probeDistance = 0;
-
-                for (uint i = 0; i < count; i++)
-                {
-                    indexCurrent = (indexInit + i) & (count - 1);
-
-                    if (buckets[indexCurrent].hash != 0)
-                        probeDistance = DistanceToInitIndex(indexCurrent);
-
-                    if (i > probeDistance)
-                        break;
-
-                    if (hash == buckets[indexCurrent].hash && KeyComparer.Equals(key, buckets[indexCurrent].key))
-                    {
-                        value = buckets[indexCurrent].value;
-                        return true;
-                    }
-                }
+                value = buckets[index].value;
+                return true;
             }
 
             value = default(TValue);
@@ -138,22 +116,22 @@ namespace rhbackshiftdict
         bool PutInternal(Entry entry, bool canReplace, bool checkDuplicates)
         {
             uint
-                indexInit = entry.hash & (count - 1),
+                indexInit = entry.hash & countMod,
                 indexCurrent,
 
-                probeDistance = 0,
-                probeCurrent = 0;
+                probeCurrent = 0,
+                probeDistance;
 
             for (uint i = 0; i < count; i++)
             {
-                indexCurrent = (indexInit + i) & (count - 1);
+                indexCurrent = (indexInit + i) & countMod;
                 if (buckets[indexCurrent].hash == 0)
                 {
                     countUsed++;
                     buckets[indexCurrent] = entry;
                     return true;
                 }
-                else if (checkDuplicates && entry.hash == buckets[indexCurrent].hash && KeyComparer.Equals(entry.key, buckets[indexCurrent].key))
+                else if (checkDuplicates && entry.hash == buckets[indexCurrent].hash && keyComparer.Equals(entry.key, buckets[indexCurrent].key))
                 {
                     if (canReplace)
                     {
@@ -171,69 +149,80 @@ namespace rhbackshiftdict
 
                     if (probeCurrent > probeDistance)
                     {
-                        probeCurrent = probeDistance + 1;
+                        probeCurrent = probeDistance;
                         Swap(ref buckets[indexCurrent], ref entry);
                     }
-                    else probeCurrent++;
+                    probeCurrent++;
                 }
             }
 
             return false;
         }
 
-        bool RemoveInternal(TKey key, bool simulate)
+        bool Find(TKey key, out uint index)
         {
             if (key == null)
                 throw new ArgumentNullException("key");
 
-            bool found = false;
+            index = 0;
             if (countUsed > 0)
             {
                 uint
                     hash = GetHash(key),
-                    indexInit = hash & (count - 1),
-                    indexCurrent = 0;
+                    indexInit = hash & countMod,
+                    probeDistance = 0;
 
                 for (uint i = 0; i < count; i++)
                 {
-                    indexCurrent = (indexInit + i) & (count - 1);
-                    if (hash == buckets[indexCurrent].hash && KeyComparer.Equals(key, buckets[indexCurrent].key))
-                    {
-                        found = true;
+                    index = (indexInit + i) & countMod;
+
+                    if (hash == buckets[index].hash && keyComparer.Equals(key, buckets[index].key))
+                        return true;
+
+                    if (buckets[index].hash != 0)
+                        probeDistance = DistanceToInitIndex(index);
+
+                    if (i > probeDistance)
                         break;
-                    }
-                }
-
-                if (found && !simulate)
-                {
-                    uint index_previous, index_swap;
-                    for (uint i = 1; i < count; i++)
-                    {
-                        index_previous = (indexCurrent + i - 1) & (count - 1);
-                        index_swap = (indexCurrent + i) & (count - 1);
-
-                        if (buckets[index_swap].hash == 0 || DistanceToInitIndex(index_swap) == 0)
-                        {
-                            buckets[index_previous] = default(Entry);
-                            break;
-                        }
-
-                        Swap(ref buckets[index_previous], ref buckets[index_swap]);
-                    }
-
-                    if (--countUsed == shrinkAt)
-                        Resize(shrinkAt);
                 }
             }
 
-            return found;
+            return false;
+        }
+
+        bool RemoveInternal(TKey key)
+        {
+            uint index;
+            if (Find(key, out index))
+            {
+                uint curIndex, nextIndex;
+                for (uint i = 0; i < count; i++)
+                {
+                    curIndex = (index + i) & countMod;
+                    nextIndex = (index + i + 1) & countMod;
+
+                    if (buckets[nextIndex].hash == 0 || DistanceToInitIndex(nextIndex) == 0)
+                    {
+                        buckets[curIndex] = default(Entry);
+
+                        if (--countUsed == shrinkAt)
+                            Resize(shrinkAt);
+
+                        return true;
+                    }
+
+                    Swap(ref buckets[curIndex], ref buckets[nextIndex]);
+                }
+            }
+
+            return false;
         }
 
         private uint DistanceToInitIndex(uint indexStored)
         {
             Debug.Assert(buckets[indexStored].hash != 0);
 
-            uint indexInit = buckets[indexStored].hash & (count - 1);
+            uint indexInit = buckets[indexStored].hash & countMod;
             if (indexInit <= indexStored)
                 return indexStored - indexInit;
             else
@@ -250,11 +239,11 @@ namespace rhbackshiftdict
             uint h = (uint)o.GetHashCode();
 
             if (h == 0)
-                h = SAFE_HASH;
+                return SAFE_HASH;
 
-            //JDK bit spread
-            h ^= (h >> 20) ^ (h >> 12);
-            return h ^ (h >> 7) ^ (h >> 4);
+            //JDK bit spread, to ensure we have
+            //a fair loword distribution
+            return h ^ (h >> 16);
         }
 
         #region Statics
@@ -285,7 +274,8 @@ namespace rhbackshiftdict
 
         public bool ContainsKey(TKey key)
         {
-            return RemoveInternal(key, true);
+            uint index;
+            return Find(key, out index);
         }
 
         public ICollection<TKey> Keys
@@ -298,7 +288,7 @@ namespace rhbackshiftdict
 
         public bool Remove(TKey key)
         {
-            return RemoveInternal(key, false);
+            return RemoveInternal(key);
         }
 
         public bool TryGetValue(TKey key, out TValue value)
