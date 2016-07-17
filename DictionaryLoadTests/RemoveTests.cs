@@ -4,7 +4,7 @@ using Xunit;
 
 namespace DictionaryLoadTests
 {
-    public class UnitTest1
+    public class RemoveTests
     {
         [Fact]
         public void TestMethod1()
