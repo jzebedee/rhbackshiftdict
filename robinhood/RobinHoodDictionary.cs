@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
+using System.Runtime.CompilerServices;
 
-namespace rhbackshiftdict
+namespace robinhood
 {
     public class RobinHoodDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
@@ -30,9 +29,11 @@ namespace rhbackshiftdict
         {
             get
             {
-                for (uint i = 0; i < count; i++)
-                    if (buckets[i].hash != 0)
+                for (uint i = 0; i < count; i++) { 
+                    if (buckets[i].hash != 0) { 
                         yield return new KeyValuePair<TKey, TValue>(buckets[i].key, buckets[i].value);
+                    }
+                }
             }
         }
 
@@ -105,7 +106,7 @@ namespace rhbackshiftdict
         bool Put(TKey key, TValue val, bool canReplace)
         {
             if (key == null)
-                throw new ArgumentNullException("key");
+                throw new ArgumentNullException(nameof(key));
 
             if (countUsed == growAt)
                 ResizeNext();
@@ -131,29 +132,25 @@ namespace rhbackshiftdict
                     buckets[indexCurrent] = entry;
                     return true;
                 }
-                else if (checkDuplicates && entry.hash == buckets[indexCurrent].hash && keyComparer.Equals(entry.key, buckets[indexCurrent].key))
-                {
-                    if (canReplace)
-                    {
-                        buckets[indexCurrent] = entry;
-                        return true;
-                    }
-                    else
-                    {
-                        throw new ArgumentException("An entry with the same key already exists", "key");
-                    }
-                }
-                else
-                {
-                    probeDistance = DistanceToInitIndex(indexCurrent);
 
-                    if (probeCurrent > probeDistance)
+                if (checkDuplicates && entry.hash == buckets[indexCurrent].hash && keyComparer.Equals(entry.key, buckets[indexCurrent].key))
+                {
+                    if (!canReplace)
                     {
-                        probeCurrent = probeDistance;
-                        Swap(ref buckets[indexCurrent], ref entry);
+                        throw new ArgumentException("An entry with the same key already exists", nameof(entry.key));
                     }
-                    probeCurrent++;
+
+                    buckets[indexCurrent] = entry;
+                    return true;
                 }
+
+                probeDistance = DistanceToInitIndex(indexCurrent);
+                if (probeCurrent > probeDistance)
+                {
+                    probeCurrent = probeDistance;
+                    Swap(ref buckets[indexCurrent], ref entry);
+                }
+                probeCurrent++;
             }
 
             return false;
@@ -162,7 +159,7 @@ namespace rhbackshiftdict
         bool Find(TKey key, out uint index)
         {
             if (key == null)
-                throw new ArgumentNullException("key");
+                throw new ArgumentNullException(nameof(key));
 
             index = 0;
             if (countUsed > 0)
@@ -247,6 +244,7 @@ namespace rhbackshiftdict
         }
 
         #region Statics
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint NextPow2(uint c)
         {
             c--;
