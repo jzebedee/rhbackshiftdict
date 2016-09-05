@@ -106,14 +106,14 @@ namespace robinhood
         private bool PutInternal(Entry entry, bool canReplace, bool checkDuplicates)
         {
             uint
-                indexInit = entry.hash & countMod,
-                indexCurrent,
-                probeCurrent = 0,
-                probeDistance;
+                indexInit = entry.hash & countMod;
+            uint
+                probeCurrent = 0;
 
             for (uint i = 0; i < count; i++)
             {
-                indexCurrent = (indexInit + i) & countMod;
+                var
+                    indexCurrent = (indexInit + i) & countMod;
                 if (buckets[indexCurrent].hash == 0)
                 {
                     countUsed++;
@@ -131,7 +131,8 @@ namespace robinhood
                     return true;
                 }
 
-                probeDistance = DistanceToInitIndex(indexCurrent);
+                var
+                    probeDistance = DistanceToInitIndex(indexCurrent);
                 if (probeCurrent > probeDistance)
                 {
                     probeCurrent = probeDistance;
@@ -179,11 +180,10 @@ namespace robinhood
             uint index;
             if (Find(key, out index))
             {
-                uint curIndex, nextIndex;
                 for (uint i = 0; i < count; i++)
                 {
-                    curIndex = (index + i) & countMod;
-                    nextIndex = (index + i + 1) & countMod;
+                    var curIndex = (index + i) & countMod;
+                    var nextIndex = (index + i + 1) & countMod;
 
                     if ((buckets[nextIndex].hash == 0) || (DistanceToInitIndex(nextIndex) == 0))
                     {
@@ -334,15 +334,9 @@ namespace robinhood
             kvpList.CopyTo(array, arrayIndex);
         }
 
-        public int Count
-        {
-            get { return (int) countUsed; }
-        }
+        public int Count => (int) countUsed;
 
-        public bool IsReadOnly
-        {
-            get { return false; }
-        }
+        public bool IsReadOnly => false;
 
         public bool Remove(KeyValuePair<TKey, TValue> item)
         {
