@@ -9,26 +9,21 @@ namespace robinhood
 {
     public class RobinHoodDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
-        private const float LOAD_FACTOR = 0.86f;
-        private const uint SAFE_HASH = 0x80000000;
+        private const float LOAD_FACTOR = 0.9f;
+        private const int SAFE_HASH = 0x40000000;
 
         private readonly IEqualityComparer<TKey> keyComparer;
 
         private Entry[] buckets;
-        private uint count;
-        private uint countMod;
-        private uint countUsed;
-        private uint growAt;
-        private uint shrinkAt;
+        private int count;
+        private int countMod;
+        private int countUsed;
+        private int growAt;
+        private int shrinkAt;
 
-        public RobinHoodDictionary(int size, IEqualityComparer<TKey> comparer = null) : this((uint) size, comparer)
+        public RobinHoodDictionary(int size, IEqualityComparer<TKey> comparer = null) : this(comparer)
         {
-        }
-
-        public RobinHoodDictionary(uint size, IEqualityComparer<TKey> comparer = null)
-            : this(comparer)
-        {
-            Resize(NextPow2(size), false);
+            Resize(NextPow2(size));
         }
 
         public RobinHoodDictionary(IEqualityComparer<TKey> comparer = null)
@@ -41,18 +36,18 @@ namespace robinhood
         {
             get
             {
-                for (uint i = 0; i < count; i++)
+                for (var i = 0; i < count; i++)
                     if (buckets[i].hash != 0)
                         yield return new KeyValuePair<TKey, TValue>(buckets[i].key, buckets[i].value);
             }
         }
 
-        private void Resize(uint newSize, bool auto = true)
+        private void Resize(int newSize, bool auto = true)
         {
 #if DEBUG
             if (newSize != 0)
             {
-                Debug.Assert(count != newSize && countUsed <= newSize);
+                Debug.Assert((count != newSize) && (countUsed <= newSize));
                 Debug.Assert(NextPow2(newSize) == newSize);
             }
 #endif
@@ -63,7 +58,7 @@ namespace robinhood
             countMod = newSize - 1;
             buckets = new Entry[newSize];
 
-            growAt = auto ? Convert.ToUInt32(newSize*LOAD_FACTOR) : newSize;
+            growAt = auto ? (int)(newSize *LOAD_FACTOR) : newSize;
             shrinkAt = auto ? newSize >> 2 : 0;
 
             if ((countUsed > 0) && (newSize != 0))
@@ -73,7 +68,7 @@ namespace robinhood
 
                 countUsed = 0;
 
-                for (uint i = 0; i < oldCount; i++)
+                for (var i = 0; i < oldCount; i++)
                     if (oldBuckets[i].hash != 0)
                         PutInternal(oldBuckets[i], false, false);
             }
@@ -81,7 +76,7 @@ namespace robinhood
 
         private bool Get(TKey key, out TValue value)
         {
-            uint index;
+            int index;
             if (Find(key, out index))
             {
                 value = buckets[index].value;
@@ -105,12 +100,12 @@ namespace robinhood
 
         private bool PutInternal(Entry entry, bool canReplace, bool checkDuplicates)
         {
-            uint
+            var
                 indexInit = entry.hash & countMod;
-            uint
+            var
                 probeCurrent = 0;
 
-            for (uint i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
                 var
                     indexCurrent = (indexInit + i) & countMod;
@@ -144,7 +139,7 @@ namespace robinhood
             return false;
         }
 
-        private bool Find(TKey key, out uint index)
+        private bool Find(TKey key, out int index)
         {
             if (key == null)
                 throw new ArgumentNullException(nameof(key));
@@ -152,12 +147,14 @@ namespace robinhood
             index = 0;
             if (countUsed > 0)
             {
-                uint
-                    hash = GetHash(key),
-                    indexInit = hash & countMod,
+                var
+                    hash = GetHash(key);
+                var
+                    indexInit = hash & countMod;
+                var
                     probeDistance = 0;
 
-                for (uint i = 0; i < count; i++)
+                for (var i = 0; i < count; i++)
                 {
                     index = (indexInit + i) & countMod;
 
@@ -177,10 +174,10 @@ namespace robinhood
 
         private bool RemoveInternal(TKey key)
         {
-            uint index;
+            int index;
             if (Find(key, out index))
             {
-                for (uint i = 0; i < count; i++)
+                for (var i = 0; i < count; i++)
                 {
                     var curIndex = (index + i) & countMod;
                     var nextIndex = (index + i + 1) & countMod;
@@ -202,7 +199,7 @@ namespace robinhood
             return false;
         }
 
-        private uint DistanceToInitIndex(uint indexStored)
+        private int DistanceToInitIndex(int indexStored)
         {
             Debug.Assert(buckets[indexStored].hash != 0);
 
@@ -217,10 +214,9 @@ namespace robinhood
             Resize(count == 0 ? 1 : count*2);
         }
 
-        private uint GetHash(TKey o)
+        private int GetHash(TKey o)
         {
-            var h = (uint) o.GetHashCode();
-
+            var h = o.GetHashCode();
             if (h == 0)
                 return SAFE_HASH;
 
@@ -231,14 +227,14 @@ namespace robinhood
 
         private struct Entry
         {
-            public Entry(uint hash, TKey key, TValue value)
+            public Entry(int hash, TKey key, TValue value)
             {
                 this.hash = hash;
                 this.key = key;
                 this.value = value;
             }
 
-            public readonly uint hash;
+            public readonly int hash;
             public readonly TKey key;
             public readonly TValue value;
         }
@@ -246,7 +242,7 @@ namespace robinhood
         #region Statics
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static uint NextPow2(uint c)
+        private static int NextPow2(int c)
         {
             c--;
             c |= c >> 1;
@@ -275,7 +271,7 @@ namespace robinhood
 
         public bool ContainsKey(TKey key)
         {
-            uint index;
+            int index;
             return Find(key, out index);
         }
 
@@ -334,7 +330,7 @@ namespace robinhood
             kvpList.CopyTo(array, arrayIndex);
         }
 
-        public int Count => (int) countUsed;
+        public int Count => countUsed;
 
         public bool IsReadOnly => false;
 
@@ -345,7 +341,7 @@ namespace robinhood
 
         public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
-            return Entries.ToList().GetEnumerator();
+            return Entries.GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
